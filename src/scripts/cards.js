@@ -1,33 +1,6 @@
 import {openModal, closeModal} from './modal.js';
-
-const initialCards = [
-    {
-      name: "Архыз",
-      link: "https://pictures.s3.yandex.net/frontend-developer/cards-compressed/arkhyz.jpg",
-    },
-    {
-      name: "Челябинская область",
-      link: "https://pictures.s3.yandex.net/frontend-developer/cards-compressed/chelyabinsk-oblast.jpg",
-    },
-    {
-      name: "Иваново",
-      link: "https://pictures.s3.yandex.net/frontend-developer/cards-compressed/ivanovo.jpg",
-    },
-    {
-      name: "Камчатка",
-      link: "https://pictures.s3.yandex.net/frontend-developer/cards-compressed/kamchatka.jpg",
-    },
-    {
-      name: "Холмогорский район",
-      link: "https://pictures.s3.yandex.net/frontend-developer/cards-compressed/kholmogorsky-rayon.jpg",
-    },
-    {
-      name: "Байкал",
-      link: "https://pictures.s3.yandex.net/frontend-developer/cards-compressed/baikal.jpg",
-    }
-];
-
-
+import {deleteCard, likeCard, deleteLikeCard} from './api.js';
+import {currentUserId} from './index.js';
 export let placesList = document.querySelector('.places__list');
 const popupImageAttr = document.querySelector('.popup__image');
 const popupCaption = document.querySelector('.popup__caption');
@@ -35,22 +8,53 @@ const imagePopup = document.querySelector('.popup_type_image');
 const closeButtonImage = imagePopup.querySelector('.popup__close');
 
 //Функция создания карточки
-export function createCard(cardName, cardLink) {
+export function createCard(cardName, cardLink, cardLikes, cardID, ownerId, likedBy) {
   const cardTemplate = document.querySelector('#card-template').content;
   const cardElement = cardTemplate.querySelector('.card').cloneNode(true);
   const cardImage = cardElement.querySelector('.card__image');
+  const cardLikeCounter = cardElement.querySelector('.card__counter');
+  cardLikeCounter.textContent = cardLikes;
   cardElement.querySelector('.card__image').src = cardLink;
   cardElement.querySelector('.card__image').alt = cardName;
   cardElement.querySelector('.card__title').textContent = cardName;
   const likedButton = cardElement.querySelector('.card__like-button');
   const deletedButton = cardElement.querySelector('.card__delete-button');
+  //Проверка на поставленный лайк
+  if (likedBy.includes(currentUserId)) {
+    likedButton.classList.add('card__like-button_is-active');
+  }
   //Поставить или убрать лайк
   likedButton.addEventListener("click", function() {
-    likedButton.classList.toggle('card__like-button_is-active');
+    if (likedButton.classList.contains('card__like-button_is-active')) {
+      deleteLikeCard(cardID)
+        .then((result) => {
+          likedButton.classList.remove('card__like-button_is-active');
+          cardLikeCounter.textContent = result.likes.length;
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+    }
+    else {
+      likeCard(cardID)
+        .then((result) => {
+          likedButton.classList.add('card__like-button_is-active');
+          cardLikeCounter.textContent = result.likes.length;
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+      }
   });
   //Кнопка удаления карточки
   deletedButton.addEventListener("click", function() {
-    deletedButton.closest('.places__item').remove();
+    deleteCard(cardID)
+      .then((result) => {
+        deletedButton.closest('.places__item').remove();
+      })
+      .catch((err) => {
+        console.log(err);
+      });
   });
   //Обработчик нажатия на карточку
   cardImage.addEventListener("click", function() {
@@ -70,7 +74,3 @@ export function createCard(cardName, cardLink) {
   });
   return cardElement;
 }
-
-initialCards.forEach(function (item) {
-  placesList.append(createCard(item.name, item.link));
-});

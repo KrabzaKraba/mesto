@@ -16,25 +16,70 @@ import '../pages/index.css';
 import './validate.js';
 import './cards.js';
 import './modal.js';
+import './api.js';
 
 import {enableValidation, toggleButtonState} from './validate.js';
 import {openModal, closeModal, closeByEsc} from './modal.js';
 import {placesList, createCard} from './cards.js'
+import {getProfileInfo, getInitialCards, editProfile, addNewCard, updateAvatar} from './api.js'
 
 const profilePopup = document.querySelector('.popup_type_edit');
 const cardPopup = document.querySelector('.popup_type_new-card');
+const avatarPopup = document.querySelector('.popup_type_avatar');
+const avatarButton = document.querySelector('.profile__image-edit');
 const editButton = document.querySelector('.profile__edit-button');
 const addButton = document.querySelector('.profile__add-button');
 const closeButtonEdit = profilePopup.querySelector('.popup__close');
 const closeButtonCard = cardPopup.querySelector('.popup__close');
+const closeButtonAvatar = avatarPopup.querySelector('.popup__close');
 const nameInput = document.querySelector('.popup__input_type_name');
 const jobInput = document.querySelector('.popup__input_type_description');
 
+export let currentUserId = null;
 export let popup = document.querySelectorAll('.popup');
+
 //Добавление анимации каждой карточке
 popup.forEach((item) => {
   item.classList.add('popup_is-animated');
 })
+
+const promises = [getProfileInfo(), getInitialCards()];
+
+//Одновременный вызов двух промисов
+Promise.all(promises)
+  .then((results) => {
+    const [profileInfo, initialCards] = results;
+
+    currentUserId = profileInfo._id;
+    document.querySelector('.profile__title').textContent = profileInfo.name;
+    document.querySelector('.profile__description').textContent = profileInfo.about;
+    const profileAvatar = document.querySelector('.profile__image');
+    profileAvatar.style.backgroundImage = `url(${profileInfo.avatar})`;
+
+    initialCards.forEach(function (item) {
+      const cardElement = createCard(item.name, item.link, item.likes.length, item._id, item.owner._id, item.likes.map(like => like._id));
+      const deleteButton = cardElement.querySelector('.card__delete-button');
+      if (item.owner._id !== currentUserId) {
+        deleteButton.hidden = true;
+      }
+      placesList.append(cardElement);
+    });
+  })
+  .catch((err) => {
+    console.log(err);
+  });
+
+
+//Улучшенная система сохранения
+function handleLoading(button, isLoading, initialText = "Сохранить") {
+  if (isLoading) {
+    button.textContent = "Сохранение...";
+    button.disabled = true;
+  } else {
+    button.textContent = initialText;
+    button.disabled = false;
+  }
+}
 
 // Обработчик нажатия на кнопку редактирования профиля
 editButton.addEventListener('click', function() {
@@ -47,6 +92,7 @@ editButton.addEventListener('click', function() {
   }
   openModal(profilePopup);
 });
+
 // Обработчик нажатия на кнопку закрытия редактирования профиля
 closeButtonEdit.addEventListener('click', () => closeModal(profilePopup));
 
@@ -58,19 +104,33 @@ profilePopup.addEventListener("click", (evt) => {
 });
 
 const profileFormElement = profilePopup.querySelector('.popup__form');
+
 // Сохранение данных, введенных в окно редактирования профиля
 function handleProfileFormSubmit(evt) {
-    evt.preventDefault();
-    document.querySelector('.profile__title').textContent = nameInput.value;
-    document.querySelector('.profile__description').textContent = jobInput.value;
-    closeModal(profilePopup);
+  evt.preventDefault();
+  const submitButton = profilePopup.querySelector(validationSettings.submitButtonSelector);
+  handleLoading(submitButton, true);
+  editProfile(nameInput.value, jobInput.value)
+    .then((result) => {
+      document.querySelector('.profile__title').textContent = result.name;
+      document.querySelector('.profile__description').textContent = result.about;
+      closeModal(profilePopup);
+    })
+    .catch((err) => {
+      console.error(err);
+      alert("Не удалось сохранить изменения. Проверьте подключение к интернету или повторите попытку позже.");
+    })
+    .finally(() => {
+      handleLoading(submitButton, false);
+    });
 }
 
 profileFormElement.addEventListener('submit', handleProfileFormSubmit);
+
 // Обработчик нажатия на кнопку добавления новой карточки
 addButton.addEventListener('click', function() {
-  const cardName = document.querySelector('.popup__input_type_card-name');
-  const cardURL = document.querySelector('.popup__input_type_url');
+  const cardName = cardPopup.querySelector('.popup__input_type_card-name');
+  const cardURL = cardPopup.querySelector('.popup__input_type_first-url');
   cardName.value = '';
   cardURL.value = '';
   const inputList = Array.from(cardPopup.querySelectorAll(validationSettings.inputSelector));
@@ -78,6 +138,7 @@ addButton.addEventListener('click', function() {
   toggleButtonState(inputList, buttonElement);
   openModal(cardPopup);
 });
+
 // Обработчик нажатия на кнопку закрытия добавления новой карточки
 closeButtonCard.addEventListener('click', () => closeModal(cardPopup));
 
@@ -89,16 +150,119 @@ cardPopup.addEventListener("click", (evt) => {
 });
 
 const cardFormElement = cardPopup.querySelector('.popup__form');
+
 // Добавление новой карточки
-function handlecardFormSubmit(evt) {
-    evt.preventDefault();
-    const cardName = document.querySelector('.popup__input_type_card-name');
-    const cardURL = document.querySelector('.popup__input_type_url');
-    placesList.prepend(createCard(cardName.value, cardURL.value));
-    closeModal(cardPopup);
+function handleCardFormSubmit(evt) {
+  evt.preventDefault();
+  const cardName = document.querySelector('.popup__input_type_card-name');
+  const cardURL = document.querySelector('.popup__input_type_first-url');
+  const submitButton = cardPopup.querySelector(validationSettings.submitButtonSelector);
+
+  if (!navigator.onLine) {
+    alert('Нет подключения к интернету. Проверьте соединение и повторите попытку.');
+    return;
+  }
+
+  handleLoading(submitButton, true);
+
+  const image = new Image();
+
+  image.onload = () => {
+    addNewCard(cardName.value, cardURL.value)
+      .then((result) => {
+        placesList.prepend(createCard(
+          cardName.value,
+          cardURL.value,
+          result.likes.length,
+          result._id,
+          result.owner._id,
+          result.likes.map(like => like._id)
+        ));
+        closeModal(cardPopup);
+        cardFormElement.reset();
+      })
+      .catch((err) => {
+        console.log(err);
+        alert("Не удалось добавить картинку. Проверьте подключение к интернету или повторите попытку позже.");
+      })
+      .finally(() => {
+        handleLoading(submitButton, false);
+      });
+  };
+  image.onerror = () => {
+    alert('Ошибка загрузки картинки. Проверьте URL и повторите попытку.');
+    handleLoading(submitButton, false);
+  };
+
+  image.src = cardURL.value;
 }
 
-cardFormElement.addEventListener('submit', handlecardFormSubmit);
+cardFormElement.addEventListener('submit', handleCardFormSubmit);
+
+// Обработчик нажатия на кнопку изменения аватара
+avatarButton.addEventListener('click', function() {
+  const avatarURL = avatarPopup.querySelector('.popup__input_type_second-url');
+  avatarURL.value = '';
+  const inputList = Array.from(avatarPopup.querySelectorAll(validationSettings.inputSelector));
+  const buttonElement = avatarPopup.querySelector(validationSettings.submitButtonSelector);
+  toggleButtonState(inputList, buttonElement);
+  openModal(avatarPopup);
+});
+
+// Обработчик нажатия на кнопку закрытия изменения аватара
+closeButtonAvatar.addEventListener('click', () => closeModal(avatarPopup));
+
+// Закрытие попапа изменения аватара нажатием на оверлей
+avatarPopup.addEventListener("click", (evt) => {
+  if (evt.currentTarget === evt.target) {
+    closeModal(avatarPopup)
+  }
+});
+
+const avatarFormElement = avatarPopup.querySelector('.popup__form');
+
+// Изменение аватара
+function handleAvatarFormSubmit(evt) {
+  evt.preventDefault();
+  const avatarURL = avatarPopup.querySelector('.popup__input_type_second-url').value;
+  const avatarImage = document.querySelector('.profile__image');
+  const submitButton = avatarPopup.querySelector(validationSettings.submitButtonSelector);
+
+  if (!navigator.onLine) {
+    alert('Нет подключения к интернету. Проверьте соединение и повторите попытку.');
+    return;
+  }
+  handleLoading(submitButton, true);
+
+  const image = new Image();
+
+  image.onload = () => {
+    updateAvatar(avatarURL)
+      .then((result) => {
+        avatarImage.style.backgroundImage = `url(${avatarURL})`;
+        closeModal(avatarPopup);
+        avatarFormElement.reset();
+      })
+      .catch((err) => {
+        console.log(err);
+        alert("Не удалось изменить аватар. Проверьте подключение к интернету или повторите попытку позже.");
+      })
+      .finally(() => {
+        handleLoading(submitButton, false);
+      });
+  };
+
+  image.onerror = () => {
+    alert('Ошибка загрузки аватара. Проверьте URL и повторите попытку.');
+    handleLoading(submitButton, false);
+  };
+
+  image.src = avatarURL;
+}
+
+
+
+avatarFormElement.addEventListener('submit', handleAvatarFormSubmit);
 
 export const validationSettings = {
   formSelector: '.popup__form',
