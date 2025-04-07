@@ -1,9 +1,9 @@
 import {createCard, placesList} from './cards.js';
 
 const config = {
-  baseUrl: 'https://nomoreparties.co/v1/frontend-st-cohort-201',
+  baseUrl: 'https://nomoreparties.co/v1/apf-cohort-202',
   headers: {
-    authorization: '3cf0ba86-8061-4f2c-930f-6d243543dd3d',
+    authorization: 'ef1291df-feae-44c5-a5c8-9fd029c1bced',
     'Content-Type': 'application/json'
   }
 }
